@@ -24,7 +24,7 @@ PREAMBLE_FILE = "preamble.txt"
 EXCLUDE_FILE = "exclude.txt"
 INCLUDE_FILE = "include.txt"  # Changed from EXCLUDE_FILE to INCLUDE_FILE
 GENERATED_DIR = "generated/"
-SERVER_URL = "http://localhost:5555/api"  # Default server URL
+SERVER_URL = "http://localhost:5555"  # Default server URL
 
 def set_root_directory(root_dir):
     """Set the root directory and update all path constants"""
@@ -292,27 +292,66 @@ def send_request_to_server(prompt, image_paths=None, include_history=True, serve
         "max_tokens": 1500,
         "temperature": 0.7,
         "provider": provider,
-        "model": model
+        "model": model,
+        "stream": True  # Enable streaming
     }
 
     # Send request to server
     try:
+        # For streaming, we need to handle the response differently
         response = requests.post(
-            f"{server_url}/generate",
+            f"{server_url}/api/generate",
             json=request_data,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            stream=True  # Enable streaming on the requests side
         )
 
-        # Handle response
-        if response.status_code == 200:
-            result = response.json()
-            if result.get("success", False):
-                return result.get("content", "")
-            else:
-                error_msg = result.get("error", "Unknown error")
-                raise Exception(f"Server error: {error_msg}")
-        else:
+        # Check initial response status
+        if response.status_code != 200:
             raise Exception(f"HTTP error: {response.status_code} - {response.text}")
+
+        # Process the streaming response
+        full_content = ""
+        print("\n" + "="*50)
+        print("STREAMING RESPONSE:")
+        print("="*50)
+
+        for line in response.iter_lines():
+            if line:
+                # SSE format starts with "data: "
+                if line.startswith(b'data: '):
+                    try:
+                        # Parse the JSON data
+                        json_str = line[6:].decode('utf-8')  # Skip the "data: " prefix
+                        data = json.loads(json_str)
+
+                        if data.get("type") == "start":
+                            # Response is starting
+                            pass  # No action needed for start event
+
+                        elif data.get("type") == "chunk":
+                            # A chunk of the response
+                            content_chunk = data.get("content", "")
+                            if content_chunk:
+                                print(content_chunk, end="", flush=True)
+                                full_content += content_chunk
+
+                        elif data.get("type") == "end":
+                            # Response is complete
+                            print()  # Add a newline at the end
+                            # Use the full content from the end message
+                            full_content = data.get("content", full_content)
+                            print(f"\nResponse complete. Total length: {len(full_content)} characters")
+
+                        elif data.get("type") == "error":
+                            # An error occurred
+                            error_msg = data.get("error", "Unknown error")
+                            raise Exception(f"Server error: {error_msg}")
+
+                    except json.JSONDecodeError as e:
+                        print(f"Error parsing JSON: {e}")
+
+        return full_content
 
     except requests.exceptions.RequestException as e:
         raise Exception(f"Connection error: {str(e)}")

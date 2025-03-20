@@ -4,7 +4,7 @@ import time
 import base64
 import requests
 from typing import Dict, Any, Optional, List
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 from openai import OpenAI
 from anthropic import Anthropic
 
@@ -43,6 +43,11 @@ def generate():
     max_tokens = data.get('max_tokens', 4000)
     temperature = data.get('temperature', 0.7)
     provider = data.get('provider', 'openrouter')  # Default to OpenAI if not specified
+    stream = data.get('stream', False)  # New parameter to enable streaming
+
+    # If streaming is requested and supported, use streaming response
+    if stream and provider == 'openrouter' and openrouter_client:
+        return stream_response(model, messages, max_tokens, temperature, provider)
 
     try:
         if provider == 'openai' and openai_client:
@@ -143,6 +148,60 @@ def generate():
             'success': False,
             'error': str(e)
         }), 500
+
+def stream_response(model, messages, max_tokens, temperature, provider):
+    """Stream response from OpenRouter API"""
+    try:
+        # Set up the streaming response
+        def generate_stream():
+            # Create a streaming request to OpenRouter
+            stream = openrouter_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True  # Enable streaming
+            )
+
+            # Initialize accumulated content
+            accumulated_content = ""
+
+            # Send the SSE format header
+            yield "data: " + json.dumps({"type": "start"}) + "\n\n"
+
+            # Process each chunk as it arrives
+            for chunk in stream:
+                if hasattr(chunk.choices[0], 'delta') and hasattr(chunk.choices[0].delta, 'content'):
+                    content_chunk = chunk.choices[0].delta.content
+                    if content_chunk:
+                        accumulated_content += content_chunk
+                        # Send the chunk in SSE format
+                        yield "data: " + json.dumps({
+                            "type": "chunk",
+                            "content": content_chunk,
+                            "accumulated": accumulated_content
+                        }) + "\n\n"
+
+            # Send the completion signal
+            yield "data: " + json.dumps({
+                "type": "end",
+                "content": accumulated_content,
+                "model": model,
+                "provider": provider
+            }) + "\n\n"
+
+        # Return a streaming response
+        return Response(stream_with_context(generate_stream()),
+                       content_type='text/event-stream')
+
+    except Exception as e:
+        # If streaming fails, return an error
+        error_json = json.dumps({
+            "type": "error",
+            "error": str(e)
+        })
+        return Response(f"data: {error_json}\n\n",
+                      content_type='text/event-stream')
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

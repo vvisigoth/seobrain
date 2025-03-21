@@ -1,1 +1,0 @@
-Let's change the message history handling. In lieu of diarizing and all that, lets just always keep the 5 most recent exchanges (prompt/response) in the dialogue directory. All messages that precede those 5 should be moved to the "history" directory (create if doesn't exist)

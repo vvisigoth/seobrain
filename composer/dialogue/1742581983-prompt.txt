@@ -1,0 +1,1 @@
+The basic functionality of outliner.py is good, but I want the article generation to take ALL of  the keywords into account and create 50 (configuraable at command line)  articles that each cover multiple keywords.

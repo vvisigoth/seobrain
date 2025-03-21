@@ -1,0 +1,169 @@
+I'll continue with creating the SEO content generator project:
+
+2. Install the required dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+
+3. Create a `config.json` file in the same directory (optional - only needed if you want to use non-Ollama providers)
+
+## Usage
+
+```bash
+python seo_generator.py keywords.txt
+```
+
+### Command Line Options
+
+- `input_file`: Path to a text file containing keywords (one per line)
+- `-o, --output`: Output directory for generated content (default: `seo_content/`)
+- `-m, --model`: AI model to use (default: `anthropic/claude-3.7-sonnet`)
+- `-p, --provider`: AI provider (choices: ollama, openai, openrouter, anthropic; default: openrouter)
+- `-s, --server`: Server URL for the AI backend (default: http://localhost:5555)
+
+### Example
+
+```bash
+# Basic usage
+python seo_generator.py my_keywords.txt
+
+# Use a specific model and provider
+python seo_generator.py my_keywords.txt -m gpt-4o -p openai
+
+# Save output to a custom directory
+python seo_generator.py my_keywords.txt -o custom_output/
+```
+
+## How It Works
+
+1. The script reads keywords from a text file (one per line)
+2. For each keyword, it generates:
+   - An SEO-optimized H1 title
+   - A meta description (150-160 characters)
+   - 5-7 H2 subheadings 
+   - 300-500 words of content
+   - A call-to-action
+3. The content is saved as a markdown file for each keyword in the output directory
+
+## Requirements
+
+- Python 3.6 or higher
+- Access to an AI backend (local Ollama instance or API keys for other providers)
+- The `composer.py` server must be running on the specified URL
+
+## Sample Input File
+
+Create a text file (e.g., `keywords.txt`) with keywords, one per line:
+
+```
+best yoga mats 2024
+how to make sourdough bread
+digital marketing for small businesses
+```
+
+## Output
+
+For each keyword, a markdown file will be generated in the output directory with SEO-optimized content.
+
+## Notes
+
+- This script requires the `composer.py` server to be running, which handles the AI model interactions
+- Content generation quality depends on the AI model used
+- Rate limits may apply depending on your AI provider
+```
+
+Now, I'll create the `seo_generator.py` script that implements the functionality:
+
+```python
+#!/usr/bin/env python3
+"""
+SEO Generation Script
+
+This script takes a text file where each line is an SEO keyword
+and generates optimized content for each keyword.
+"""
+
+import os
+import sys
+import argparse
+import json
+import requests
+from pathlib import Path
+from typing import List, Dict, Any, Optional
+
+# Default settings
+DEFAULT_MODEL = "anthropic/claude-3.7-sonnet"
+DEFAULT_PROVIDER = "openrouter"
+SERVER_URL = "http://localhost:5555"
+OUTPUT_DIR = "seo_content"
+
+def load_keywords(file_path: str) -> List[str]:
+    """Load keywords from a text file, one per line."""
+    with open(file_path, 'r') as f:
+        return [line.strip() for line in f if line.strip()]
+
+def generate_seo_content(keyword: str, model: str, provider: str, server_url: str) -> str:
+    """Generate SEO content for a given keyword using the AI API."""
+    
+    # Craft the prompt for SEO content generation
+    prompt = f"""
+Generate high-quality SEO content for the keyword: "{keyword}"
+
+Please include:
+1. A compelling H1 title (using markdown # syntax)
+2. A meta description (150-160 characters)
+3. 5-7 relevant H2 subheadings (using markdown ## syntax)
+4. 300-500 words of well-structured, informative content
+5. A natural keyword density of 1-2%
+6. A clear call-to-action at the end
+
+The content should be engaging, informative, and optimized for search engines while providing value to readers.
+"""
+
+    # Prepare request data
+    request_data = {
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 2000,
+        "temperature": 0.7,
+        "provider": provider,
+        "model": model
+    }
+
+    # Send request to server
+    try:
+        response = requests.post(
+            f"{server_url}/api/generate",
+            json=request_data,
+            headers={"Content-Type": "application/json"}
+        )
+
+        if response.status_code != 200:
+            raise Exception(f"HTTP error: {response.status_code} - {response.text}")
+
+        return response.json()["content"]
+    
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Connection error: {str(e)}")
+
+def save_content(keyword: str, content: str, output_dir: str) -> str:
+    """Save the generated content to a file and return the file path."""
+    # Create output directory if it doesn't exist
+    Path(output_dir).mkdir(exist_ok=True)
+    
+    # Create a filename from the keyword
+    filename = keyword.lower().replace(' ', '_').replace("'", "").replace('"', '')
+    # Remove any special characters that might cause issues with filenames
+    filename = ''.join(c for c in filename if c.isalnum() or c == '_' or c == '-')
+    filepath = os.path.join(output_dir, f"{filename}.md")
+    
+    # Save the content
+    with open(filepath, 'w') as f:
+        f.write(content)
+    
+    return filepath
+
+def main():
+    """Main function to run the SEO generation script."""
+    parser = argparse.ArgumentParser(description="Generate SEO content from keywords")
+    parser.add_argument("input_file", help="Text file containing keywords, one per line")
+    parser.add_argument("-o", "--output", default=OUTPUT_DIR, help=f"Output directory (default:

@@ -1,0 +1,124 @@
+To add support for a custom preprompt file to the `outliner.py` script, I'll make the following changes:
+
+1. Add a constant for the default preprompt file
+2. Create a function to load the preprompt from a file
+3. Update the `generate_seo_content` function to incorporate the preprompt
+4. Add a command-line argument for specifying a custom preprompt file
+
+Here are the specific changes needed:
+
+```python
+# Add to the constants at the top
+DEFAULT_PREPROMPT_FILE = "preprompt.txt"
+
+# Add this function to load the preprompt
+def load_preprompt(file_path: str) -> str:
+    """Load custom preprompt from a text file."""
+    if not os.path.exists(file_path):
+        return ""
+    
+    with open(file_path, 'r') as f:
+        return f.read().strip()
+
+# Update the generate_seo_content function to accept a preprompt parameter
+def generate_seo_content(keywords: List[str], preprompt: str, model: str, provider: str, server_url: str) -> str:
+    """Generate SEO content for a given set of keywords using the AI API."""
+    
+    # Format the keywords for the prompt
+    keywords_str = ", ".join([f'"{kw}"' for kw in keywords])
+    primary_keyword = keywords[0]  # Use the first keyword as primary
+    
+    # Craft the prompt for SEO content generation
+    base_prompt = f"""
+Generate high-quality SEO content that incorporates ALL of the following keywords: {keywords_str}
+
+Use "{primary_keyword}" as the primary focus, but naturally integrate all the other keywords throughout the article.
+
+Please include:
+1. A compelling H1 title (using markdown # syntax) that includes the primary keyword
+2. A meta description (150-160 characters) that mentions 2-3 of the keywords
+3. 5-7 relevant H2 subheadings (using markdown ## syntax) that incorporate different keywords
+4. 800-1200 words of well-structured, informative content that naturally includes all keywords
+5. A natural keyword density without keyword stuffing
+6. A clear call-to-action at the end
+
+The content should be engaging, informative, and optimized for search engines while providing genuine value to readers.
+Ensure the article flows naturally and doesn't feel like it's artificially cramming in keywords.
+"""
+
+    # Combine preprompt with base prompt if preprompt exists
+    prompt = f"{preprompt}\n\n{base_prompt}" if preprompt else base_prompt
+
+    # Rest of the function remains the same
+    request_data = {
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 4000,
+        "temperature": 0.7,
+        "provider": provider,
+        "model": model
+    }
+
+    # Send request to server
+    try:
+        response = requests.post(
+            f"{server_url}/api/generate",
+            json=request_data,
+            headers={"Content-Type": "application/json"}
+        )
+
+        if response.status_code != 200:
+            raise Exception(f"HTTP error: {response.status_code} - {response.text}")
+
+        return response.json()["content"]
+    
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Connection error: {str(e)}")
+
+# Update the main function to include the preprompt parameter
+def main():
+    """Main function to run the SEO generation script."""
+    parser = argparse.ArgumentParser(description="Generate SEO content from keywords")
+    parser.add_argument("input_file", help="Text file containing keywords, one per line")
+    parser.add_argument("-o", "--output", default=OUTPUT_DIR, help=f"Output directory (default: {OUTPUT_DIR})")
+    parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"AI model to use (default: {DEFAULT_MODEL})")
+    parser.add_argument("-p", "--provider", default=DEFAULT_PROVIDER, 
+                        choices=["ollama", "openai", "openrouter", "anthropic"],
+                        help=f"AI provider (default: {DEFAULT_PROVIDER})")
+    parser.add_argument("-s", "--server", default=SERVER_URL, help=f"Server URL (default: {SERVER_URL})")
+    parser.add_argument("-n", "--num-articles", type=int, default=DEFAULT_ARTICLE_COUNT,
+                        help=f"Number of articles to generate (default: {DEFAULT_ARTICLE_COUNT})")
+    parser.add_argument("--preprompt", default=DEFAULT_PREPROMPT_FILE, 
+                        help=f"File containing custom instructions to prepend to the prompt (default: {DEFAULT_PREPROMPT_FILE})")
+    
+    args = parser.parse_args()
+    
+    try:
+        # Load keywords
+        keywords = load_keywords(args.input_file)
+        print(f"Loaded {len(keywords)} keywords from {args.input_file}")
+        
+        # Load preprompt if file exists
+        preprompt = load_preprompt(args.preprompt)
+        if preprompt:
+            print(f"Loaded custom preprompt from {args.preprompt}")
+        
+        # Distribute keywords across articles
+        article_keyword_sets = distribute_keywords(keywords, args.num_articles)
+        print(f"Distributing keywords across {len(article_keyword_sets)} articles")
+        
+        # Process each article
+        for i, article_keywords in enumerate(article_keyword_sets, 1):
+            print(f"\n[{i}/{len(article_keyword_sets)}] Generating article with {len(article_keywords)} keywords")
+            print(f"Keywords: {', '.join(article_keywords)}")
+            
+            # Generate content
+            content = generate_seo_content(
+                keywords=article_keywords,
+                preprompt=preprompt,
+                model=args.model,
+                provider=args.provider,
+                server_url=args.server
+            )
+            
+            # Save content using the first keyword as primary
+            primary_keyword = article_keywords[

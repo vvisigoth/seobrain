@@ -1,20 +1,6 @@
-```python
-def parser_add_argument(parser):
-    """Add model and provider arguments to the parser"""
-    parser.add_argument("-o", "--output", default=DEFAULT_ARTICLE_COUNT, 
-                        help=f"Output directory (default: {OUTPUT_DIR})")
-    parser.add_argument("-m", "--model", default=DEFAULT_MODEL, 
-                        help=f"AI model to use (default: {DEFAULT_MODEL})")
-    parser.add_argument("-p", "--provider", default=DEFAULT_PROVIDER, 
-                        choices=["ollama", "openai", "openrouter", "anthropic"],
-                        help=f"AI provider (default: {DEFAULT_PROVIDER})")
-    parser.add_argument("-s", "--server", default=SERVER_URL, 
-                        help=f"Server URL (default: {SERVER_URL})")
-    parser.add_argument("-n", "--num-articles", type=int, default=DEFAULT_ARTICLE_COUNT,
-                        help=f"Number of articles to generate (default: {DEFAULT_ARTICLE_COUNT})")
-```
+I'll enhance the `outliner.py` script to support a custom preprompt from a text file and distribute all keywords across a configurable number of articles.
 
-Here's the completed implementation of the enhanced outliner.py script:
+Here's the improved implementation:
 
 ```python
 #!python3.12
@@ -23,6 +9,7 @@ SEO Generation Script
 
 This script takes a text file where each line is an SEO keyword
 and generates optimized content that covers multiple keywords in each article.
+A custom preprompt can be specified to guide the content generation.
 """
 
 import os
@@ -40,11 +27,20 @@ DEFAULT_PROVIDER = "openrouter"
 SERVER_URL = "http://localhost:5555"
 OUTPUT_DIR = "seo_content"
 DEFAULT_ARTICLE_COUNT = 50
+DEFAULT_PREPROMPT_FILE = "preprompt.txt"
 
 def load_keywords(file_path: str) -> List[str]:
     """Load keywords from a text file, one per line."""
     with open(file_path, 'r') as f:
         return [line.strip() for line in f if line.strip()]
+
+def load_preprompt(file_path: str) -> str:
+    """Load custom preprompt from a text file."""
+    if not os.path.exists(file_path):
+        return ""
+    
+    with open(file_path, 'r') as f:
+        return f.read().strip()
 
 def distribute_keywords(keywords: List[str], article_count: int) -> List[List[str]]:
     """
@@ -74,7 +70,7 @@ def distribute_keywords(keywords: List[str], article_count: int) -> List[List[st
     
     return articles
 
-def generate_seo_content(keywords: List[str], model: str, provider: str, server_url: str) -> str:
+def generate_seo_content(keywords: List[str], preprompt: str, model: str, provider: str, server_url: str) -> str:
     """Generate SEO content for a given set of keywords using the AI API."""
     
     # Format the keywords for the prompt
@@ -82,7 +78,7 @@ def generate_seo_content(keywords: List[str], model: str, provider: str, server_
     primary_keyword = keywords[0]  # Use the first keyword as primary
     
     # Craft the prompt for SEO content generation
-    prompt = f"""
+    base_prompt = f"""
 Generate high-quality SEO content that incorporates ALL of the following keywords: {keywords_str}
 
 Use "{primary_keyword}" as the primary focus, but naturally integrate all the other keywords throughout the article.
@@ -98,6 +94,9 @@ Please include:
 The content should be engaging, informative, and optimized for search engines while providing genuine value to readers.
 Ensure the article flows naturally and doesn't feel like it's artificially cramming in keywords.
 """
+
+    # Combine preprompt with base prompt if preprompt exists
+    prompt = f"{preprompt}\n\n{base_prompt}" if preprompt else base_prompt
 
     # Prepare request data
     request_data = {
@@ -136,4 +135,11 @@ def save_content(primary_keyword: str, all_keywords: List[str], content: str, ou
     filepath = os.path.join(output_dir, f"{filename}.md")
     
     # Add a header comment with all keywords used
-    keywords_comment = "<!--\nKeywords covered in this article
+    keywords_comment = "<!--\nKeywords covered in this article:\n"
+    for kw in all_keywords:
+        keywords_comment += f"- {kw}\n"
+    keywords_comment += "-->\n\n"
+    
+    # Save the content with the keywords comment
+    with open(filepath, 'w') as f:
+        f.write(keywords_comment +

@@ -1,3 +1,8 @@
+I'll update `articlegenerator.py` to use the RAG functionality from `search.py` by importing the necessary components rather than duplicating code. This approach will keep the code maintainable in one place.
+
+Here's the implementation:
+
+```python
 #!python3.12
 """
 SEO Generation Script with RAG (Retrieval-Augmented Generation)
@@ -225,8 +230,7 @@ def main():
         documents = load_documents(args.knowledge)
         
         # Create or load vector index
-        #vector_db = create_or_load_index(documents, embeddings, args.index, args.rebuild_index)
-        vector_db = create_or_load_index(documents, embeddings, args.index)
+        vector_db = create_or_load_index(documents, embeddings, args.index, args.rebuild_index)
         
         # Distribute keywords across articles
         article_keyword_sets = distribute_keywords(keywords, args.num_articles)
@@ -267,3 +271,34 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+```
+
+The key changes I made:
+
+1. Imported the necessary functions from `search.py` instead of duplicating code:
+   ```python
+   from search import (
+       load_config,
+       initialize_embeddings,
+       load_documents,
+       create_or_load_index,
+       search_documents
+   )
+   ```
+
+2. Added a `format_research_results()` function to format the search results for inclusion in the prompt
+
+3. Modified `generate_seo_content()` to include research data in the prompt
+
+4. Added command-line arguments for the knowledge base directory, index name, and search parameters
+
+5. Implemented the RAG pipeline in the `main()` function:
+   - Initialize embeddings
+   - Load documents from the knowledge base
+   - Create or load vector index
+   - For each set of keywords:
+     - Search for relevant documents
+     - Format research results
+     - Generate content with research data
+
+This implementation maintains all the existing functionality while adding RAG capabilities by importing from `search.py` rather than duplicating code.

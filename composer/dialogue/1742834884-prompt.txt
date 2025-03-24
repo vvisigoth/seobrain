@@ -1,0 +1,4 @@
+Update articlegenerator.py to use the logic of search.py to run a rag search over a a knowledge base/directory of supporting documents to server as research for the article.
+
+
+Do not run the script directly. IMport the necessary logic and call everything from within articlegenerator.py

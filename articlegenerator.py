@@ -22,10 +22,21 @@ SERVER_URL = "http://localhost:5555"
 OUTPUT_DIR = "seo_content"
 DEFAULT_ARTICLE_COUNT = 50
 
+# Add to the constants at the top
+DEFAULT_PREPROMPT_FILE = "preprompt.txt"
+
 def load_keywords(file_path: str) -> List[str]:
     """Load keywords from a text file, one per line."""
     with open(file_path, 'r') as f:
         return [line.strip() for line in f if line.strip()]
+
+def load_preprompt(file_path: str) -> str:
+    """Load custom preprompt from a text file."""
+    if not os.path.exists(file_path):
+        return ""
+    
+    with open(file_path, 'r') as f:
+        return f.read().strip()
 
 def distribute_keywords(keywords: List[str], article_count: int) -> List[List[str]]:
     """
@@ -55,7 +66,7 @@ def distribute_keywords(keywords: List[str], article_count: int) -> List[List[st
     
     return articles
 
-def generate_seo_content(keywords: List[str], model: str, provider: str, server_url: str) -> str:
+def generate_seo_content(keywords: List[str], preprompt: str, model: str, provider: str, server_url: str) -> str:
     """Generate SEO content for a given set of keywords using the AI API."""
     
     # Format the keywords for the prompt
@@ -63,7 +74,7 @@ def generate_seo_content(keywords: List[str], model: str, provider: str, server_
     primary_keyword = keywords[0]  # Use the first keyword as primary
     
     # Craft the prompt for SEO content generation
-    prompt = f"""
+    base_prompt = f"""
 Generate high-quality SEO content that incorporates ALL of the following keywords: {keywords_str}
 
 Use "{primary_keyword}" as the primary focus, but naturally integrate all the other keywords throughout the article.
@@ -79,6 +90,9 @@ Please include:
 The content should be engaging, informative, and optimized for search engines while providing genuine value to readers.
 Ensure the article flows naturally and doesn't feel like it's artificially cramming in keywords.
 """
+
+    # Combine preprompt with base prompt if preprompt exists
+    prompt = f"{preprompt}\n\n{base_prompt}" if preprompt else base_prompt
 
     # Prepare request data
     request_data = {
@@ -140,6 +154,8 @@ def main():
     parser.add_argument("-s", "--server", default=SERVER_URL, help=f"Server URL (default: {SERVER_URL})")
     parser.add_argument("-n", "--num-articles", type=int, default=DEFAULT_ARTICLE_COUNT,
                         help=f"Number of articles to generate (default: {DEFAULT_ARTICLE_COUNT})")
+    parser.add_argument("--preprompt", default=DEFAULT_PREPROMPT_FILE, 
+                        help=f"File containing custom instructions to prepend to the prompt (default: {DEFAULT_PREPROMPT_FILE})")
     
     args = parser.parse_args()
     
@@ -147,6 +163,10 @@ def main():
         # Load keywords
         keywords = load_keywords(args.input_file)
         print(f"Loaded {len(keywords)} keywords from {args.input_file}")
+        # Load preprompt if file exists
+        preprompt = load_preprompt(args.preprompt)
+        if preprompt:
+            print(f"Loaded custom preprompt from {args.preprompt}")
         
         # Distribute keywords across articles
         article_keyword_sets = distribute_keywords(keywords, args.num_articles)
@@ -160,6 +180,7 @@ def main():
             # Generate content
             content = generate_seo_content(
                 keywords=article_keywords,
+                preprompt=preprompt,
                 model=args.model,
                 provider=args.provider,
                 server_url=args.server

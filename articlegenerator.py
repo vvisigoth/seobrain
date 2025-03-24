@@ -200,6 +200,8 @@ def main():
                         help="Force rebuild of the search index")
     parser.add_argument("--results", type=int, default=3,
                         help="Number of research results to include per article (default: 3)")
+    parser.add_argument("--tags", nargs='+', 
+                        help="Only include documents with these tags in the YAML front matter")
     
     args = parser.parse_args()
     
@@ -221,12 +223,11 @@ def main():
         # Create knowledge directory if it doesn't exist
         Path(args.knowledge).mkdir(exist_ok=True)
         
-        # Load documents from knowledge base
-        documents = load_documents(args.knowledge)
+        # Load documents from knowledge base, filtering by tags if specified
+        documents = load_documents(args.knowledge, args.tags)
         
         # Create or load vector index
-        #vector_db = create_or_load_index(documents, embeddings, args.index, args.rebuild_index)
-        vector_db = create_or_load_index(documents, embeddings, args.index)
+        vector_db = create_or_load_index(documents, embeddings, args.index, args.rebuild_index)
         
         # Distribute keywords across articles
         article_keyword_sets = distribute_keywords(keywords, args.num_articles)
@@ -264,6 +265,5 @@ def main():
     
     print(f"\nSEO content generation complete. {len(article_keyword_sets)} articles saved to {args.output} directory.")
     return 0
-
 if __name__ == "__main__":
     sys.exit(main())

@@ -1,0 +1,186 @@
+I'll update the `search.py` and `articlegenerator.py` files to add support for filtering documents by YAML front matter tags. Here are the changes needed:
+
+### Changes to `search.py`:
+
+```python
+# Add this function to extract YAML front matter from markdown files
+def extract_yaml_front_matter(content: str) -> Dict[str, Any]:
+    """Extract YAML front matter from markdown content"""
+    front_matter = {}
+    
+    # Check if the content has YAML front matter (starts with ---)
+    if content.startswith('---'):
+        # Find the closing --- of the front matter
+        end_index = content.find('---', 3)
+        if end_index != -1:
+            # Extract the YAML content
+            yaml_content = content[3:end_index].strip()
+            
+            # Parse the YAML content
+            try:
+                import yaml
+                front_matter = yaml.safe_load(yaml_content)
+            except Exception as e:
+                print(f"Error parsing YAML front matter: {e}")
+    
+    return front_matter
+
+# Modify the load_documents function to support tag filtering
+def load_documents(directory: str, tags: List[str] = None) -> List[Document]:
+    """
+    Load all text files from directory
+    If tags is provided, only include files with matching tags in YAML front matter
+    """
+    documents = []
+    dir_path = Path(directory)
+    
+    if not dir_path.exists():
+        print(f"Warning: Directory '{directory}' does not exist. Creating it.")
+        dir_path.mkdir(exist_ok=True)
+        return documents
+    
+    # Find all text/markdown files recursively
+    file_paths = []
+    for ext in [".txt", ".md", ".html", ".json", ".csv"]:
+        file_paths.extend(glob.glob(os.path.join(directory, f"**/*{ext}"), recursive=True))
+    
+    for file_path in file_paths:
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            
+            # If tags are specified, check if the file has matching tags
+            if tags:
+                # Only check for tags in markdown files
+                if file_path.endswith(('.md', '.markdown')):
+                    front_matter = extract_yaml_front_matter(content)
+                    file_tags = front_matter.get('tags', [])
+                    
+                    # Skip this file if it doesn't have any of the specified tags
+                    if not any(tag in file_tags for tag in tags):
+                        continue
+            
+            doc = Document(
+                page_content=content,
+                metadata={
+                    "source": file_path,
+                    "filename": os.path.basename(file_path),
+                }
+            )
+            documents.append(doc)
+            
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
+    
+    print(f"Loaded {len(documents)} documents from {directory}" + 
+          (f" with tags: {', '.join(tags)}" if tags else ""))
+    return documents
+```
+
+### Changes to `articlegenerator.py`:
+
+```python
+# Add the tags argument to the main function
+def main():
+    """Main function to run the SEO generation script with RAG."""
+    parser = argparse.ArgumentParser(description="Generate SEO content from keywords with RAG")
+    parser.add_argument("input_file", help="Text file containing keywords, one per line")
+    parser.add_argument("-o", "--output", default=OUTPUT_DIR, help=f"Output directory (default: {OUTPUT_DIR})")
+    parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"AI model to use (default: {DEFAULT_MODEL})")
+    parser.add_argument("-p", "--provider", default=DEFAULT_PROVIDER, 
+                        choices=["ollama", "openai", "openrouter", "anthropic"],
+                        help=f"AI provider (default: {DEFAULT_PROVIDER})")
+    parser.add_argument("-s", "--server", default=SERVER_URL, help=f"Server URL (default: {SERVER_URL})")
+    parser.add_argument("-n", "--num-articles", type=int, default=DEFAULT_ARTICLE_COUNT,
+                        help=f"Number of articles to generate (default: {DEFAULT_ARTICLE_COUNT})")
+    parser.add_argument("--preprompt", default=DEFAULT_PREPROMPT_FILE, 
+                        help=f"File containing custom instructions to prepend to the prompt (default: {DEFAULT_PREPROMPT_FILE})")
+    parser.add_argument("--knowledge", default=DEFAULT_KNOWLEDGE_DIR,
+                        help=f"Directory containing knowledge base documents (default: {DEFAULT_KNOWLEDGE_DIR})")
+    parser.add_argument("--index", default=DEFAULT_INDEX_NAME,
+                        help=f"Name of the vector index to create/use (default: {DEFAULT_INDEX_NAME})")
+    parser.add_argument("--rebuild-index", action="store_true",
+                        help="Force rebuild of the search index")
+    parser.add_argument("--results", type=int, default=3,
+                        help="Number of research results to include per article (default: 3)")
+    parser.add_argument("--tags", nargs='+', 
+                        help="Only include documents with these tags in the YAML front matter")
+    
+    args = parser.parse_args()
+    
+    try:
+        # Load keywords
+        keywords = load_keywords(args.input_file)
+        print(f"Loaded {len(keywords)} keywords from {args.input_file}")
+        
+        # Load preprompt if file exists
+        preprompt = load_preprompt(args.preprompt)
+        if preprompt:
+            print(f"Loaded custom preprompt from {args.preprompt}")
+        
+        # Initialize RAG components
+        print("Initializing RAG components...")
+        config = load_config()
+        embeddings = initialize_embeddings(config)
+        
+        # Create knowledge directory if it doesn't exist
+        Path(args.knowledge).mkdir(exist_ok=True)
+        
+        # Load documents from knowledge base, filtering by tags if specified
+        documents = load_documents(args.knowledge, args.tags)
+        
+        # Create or load vector index
+        vector_db = create_or_load_index(documents, embeddings, args.index, args.rebuild_index)
+        
+        # Distribute keywords across articles
+        article_keyword_sets = distribute_keywords(keywords, args.num_articles)
+        print(f"Distributing keywords across {len(article_keyword_sets)} articles")
+        
+        # Process each article
+        for i, article_keywords in enumerate(article_keyword_sets, 1):
+            print(f"\n[{i}/{len(article_keyword_sets)}] Generating article with {len(article_keywords)} keywords")
+            print(f"Keywords: {', '.join(article_keywords)}")
+            
+            # Search for relevant research for these keywords
+            print("Searching for relevant research...")
+            search_query = " ".join(article_keywords)
+            research_results = search_documents(search_query, vector_db, k=args.results)
+            research_text = format_research_results(research_results)
+            
+            # Generate content with research data
+            content = generate_seo_content(
+                keywords=article_keywords,
+                research=research_text,
+                preprompt=preprompt,
+                model=args.model,
+                provider=args.provider,
+                server_url=args.server
+            )
+            
+            # Save content using the first keyword as primary
+            primary_keyword = article_keywords[0]
+            filepath = save_content(primary_keyword, article_keywords, content, args.output)
+            print(f"Article saved to: {filepath}")
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+    
+    print(f"\nSEO content generation complete. {len(article_keyword_sets)} articles saved to {args.output} directory.")
+    return 0
+```
+
+These changes will:
+
+1. Add a new `extract_yaml_front_matter` function to parse YAML front matter from markdown files
+2. Modify the `load_documents` function to filter files based on tags in the YAML front matter
+3. Add a new `--tags` command-line argument to specify which tags to filter by
+4. Pass the tags to the `load_documents` function when loading documents from the knowledge base
+
+Now users can filter the knowledge base documents by specifying tags:
+
+```bash
+python articlegenerator.py keywords.txt --tags midjourney images
+```
+
+This will only include documents that have at least one of the specified tags in their YAML front matter.

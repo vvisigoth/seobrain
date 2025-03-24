@@ -16,7 +16,7 @@ from langchain_core.documents import Document
 
 def load_config():
     """Load API keys from config file"""
-    with open('config.json', 'r') as f:
+    with open('composer/config.json', 'r') as f:
         return json.load(f)
 
 def initialize_embeddings(config):
@@ -27,44 +27,66 @@ def initialize_embeddings(config):
         # Fallback to local model that doesn't require API keys
         return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-def load_documents(history_dir: str) -> List[Document]:
-    """Load all text files from history directory"""
+def extract_yaml_front_matter(content: str) -> Dict[str, Any]:
+    """Extract YAML front matter from markdown content"""
+    front_matter = {}
+    
+    # Check if the content has YAML front matter (starts with ---)
+    if content.startswith('---'):
+        # Find the closing --- of the front matter
+        end_index = content.find('---', 3)
+        if end_index != -1:
+            # Extract the YAML content
+            yaml_content = content[3:end_index].strip()
+            
+            # Parse the YAML content
+            try:
+                import yaml
+                front_matter = yaml.safe_load(yaml_content)
+            except Exception as e:
+                print(f"Error parsing YAML front matter: {e}")
+    
+    return front_matter
+
+def load_documents(directory: str, tags: List[str] = None) -> List[Document]:
+    """
+    Load all text files from directory
+    If tags is provided, only include files with matching tags in YAML front matter
+    """
     documents = []
-    history_path = Path(history_dir)
+    dir_path = Path(directory)
     
-    if not history_path.exists():
-        print(f"Error: Directory '{history_dir}' does not exist")
-        sys.exit(1)
+    if not dir_path.exists():
+        print(f"Warning: Directory '{directory}' does not exist. Creating it.")
+        dir_path.mkdir(exist_ok=True)
+        return documents
     
-    # Find all text files recursively
-    file_paths = glob.glob(os.path.join(history_dir, "**/*.txt"), recursive=True)
+    # Find all text/markdown files recursively
+    file_paths = []
+    for ext in [".txt", ".md", ".html", ".json", ".csv"]:
+        file_paths.extend(glob.glob(os.path.join(directory, f"**/*{ext}"), recursive=True))
     
     for file_path in file_paths:
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
-                
-            # Extract metadata from filename
-            filename = os.path.basename(file_path)
-            file_type = "unknown"
-            timestamp = None
             
-            # Parse timestamp from filenames like "1234567890-prompt.txt"
-            parts = filename.split('-')
-            if len(parts) >= 2 and parts[0].isdigit():
-                try:
-                    timestamp = datetime.fromtimestamp(int(parts[0]))
-                    file_type = parts[1].split('.')[0]  # prompt, response, etc.
-                except:
-                    pass
-                
+            # If tags are specified, check if the file has matching tags
+            if tags:
+                # Only check for tags in markdown files
+                if file_path.endswith(('.md', '.markdown')):
+                    front_matter = extract_yaml_front_matter(content)
+                    file_tags = front_matter.get('tags', [])
+                    
+                    # Skip this file if it doesn't have any of the specified tags
+                    if not any(tag in file_tags for tag in tags):
+                        continue
+            
             doc = Document(
                 page_content=content,
                 metadata={
                     "source": file_path,
-                    "filename": filename,
-                    "type": file_type,
-                    "timestamp": timestamp
+                    "filename": os.path.basename(file_path),
                 }
             )
             documents.append(doc)
@@ -72,7 +94,8 @@ def load_documents(history_dir: str) -> List[Document]:
         except Exception as e:
             print(f"Error reading {file_path}: {e}")
     
-    print(f"Loaded {len(documents)} documents from {history_dir}")
+    print(f"Loaded {len(documents)} documents from {directory}" + 
+          (f" with tags: {', '.join(tags)}" if tags else ""))
     return documents
 
 def create_or_load_index(documents: List[Document], embeddings, index_name: str = "history_index"):

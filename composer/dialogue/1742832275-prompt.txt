@@ -1,1 +1,0 @@
-I'd like to be able to set a custom preprompt for these articles, set in a different text file: preprompt.txt

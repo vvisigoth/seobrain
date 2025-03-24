@@ -1,0 +1,10 @@
+I'd like to add an option to the knowledge base/RAG functionality of the article generator. Add another flag "--tags" that can take a list of tags (tags can be multiple words). If these tags are submitted, then only index and retrieve text/markdown files with the corresponding tags in the yaml header. The yaml header looks as below:
+
+```
+---
+tags:
+  - midjourney
+  - sref
+  - images
+---
+```

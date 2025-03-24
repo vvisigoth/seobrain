@@ -1,0 +1,1 @@
+How can I watch the directory and run this script whenever a file is added?

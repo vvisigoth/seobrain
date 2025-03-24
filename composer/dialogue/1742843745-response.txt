@@ -1,0 +1,244 @@
+Here's a lightweight indexing script that you can run whenever a new file is added to your knowledge base directory. This script will update the vector index used by `articlegenerator.py` without having to rebuild the entire index from scratch:
+
+```python
+#!/usr/bin/env python3
+"""
+index_knowledge.py - A lightweight script to index new files in the knowledge base
+
+This script can be run whenever new files are added to your knowledge base directory.
+It will update the existing vector index without rebuilding it from scratch.
+"""
+
+import os
+import sys
+import argparse
+import time
+from pathlib import Path
+from typing import List, Optional, Set
+
+# Import RAG components from search.py
+from search import (
+    load_config,
+    initialize_embeddings,
+    extract_yaml_front_matter,
+    load_documents,
+    create_or_load_index
+)
+from langchain_core.documents import Document
+from langchain_community.vectorstores import FAISS
+
+# Default settings
+DEFAULT_KNOWLEDGE_DIR = "knowledge_base"
+DEFAULT_INDEX_NAME = "seo_index"
+
+def get_indexed_files(index_path: str) -> Set[str]:
+    """Get a set of already indexed file paths from the index metadata file"""
+    metadata_path = os.path.join(index_path, "indexed_files.txt")
+    
+    if not os.path.exists(metadata_path):
+        return set()
+    
+    with open(metadata_path, 'r', encoding='utf-8') as f:
+        return set(line.strip() for line in f if line.strip())
+
+def update_indexed_files(index_path: str, file_paths: List[str]):
+    """Update the list of indexed file paths"""
+    metadata_path = os.path.join(index_path, "indexed_files.txt")
+    
+    # Get existing files if the metadata file exists
+    existing_files = get_indexed_files(index_path)
+    
+    # Add new files to the set
+    updated_files = existing_files.union(set(file_paths))
+    
+    # Write the updated list back to the file
+    with open(metadata_path, 'w', encoding='utf-8') as f:
+        for file_path in sorted(updated_files):
+            f.write(f"{file_path}\n")
+
+def find_new_files(directory: str, index_path: str, tags: Optional[List[str]] = None) -> List[Document]:
+    """Find new files in the directory that haven't been indexed yet"""
+    # Get list of already indexed files
+    indexed_files = get_indexed_files(index_path)
+    
+    # Find all text/markdown files recursively
+    import glob
+    file_paths = []
+    for ext in [".txt", ".md", ".html", ".json", ".csv"]:
+        file_paths.extend(glob.glob(os.path.join(directory, f"**/*{ext}"), recursive=True))
+    
+    # Filter out already indexed files
+    new_file_paths = [path for path in file_paths if path not in indexed_files]
+    
+    if not new_file_paths:
+        print("No new files found to index.")
+        return []
+    
+    print(f"Found {len(new_file_paths)} new files to index.")
+    
+    # Process new files
+    new_documents = []
+    for file_path in new_file_paths:
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            
+            # If tags are specified, check if the file has matching tags
+            if tags and file_path.endswith(('.md', '.markdown')):
+                front_matter = extract_yaml_front_matter(content)
+                file_tags = front_matter.get('tags', [])
+                
+                # Skip this file if it doesn't have any of the specified tags
+                if not any(tag in file_tags for tag in tags):
+                    continue
+            
+            doc = Document(
+                page_content=content,
+                metadata={
+                    "source": file_path,
+                    "filename": os.path.basename(file_path),
+                }
+            )
+            new_documents.append(doc)
+            
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
+    
+    return new_documents, new_file_paths
+
+def add_to_index(vector_db, documents: List[Document], index_path: str, file_paths: List[str]):
+    """Add new documents to the existing vector index"""
+    if not documents:
+        return vector_db
+    
+    # Split documents into chunks
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    chunks = text_splitter.split_documents(documents)
+    
+    print(f"Adding {len(chunks)} chunks from {len(documents)} documents to the index...")
+    
+    # Add new documents to the index
+    vector_db.add_documents(chunks)
+    
+    # Save the updated index
+    vector_db.save_local(index_path)
+    
+    # Update the list of indexed files
+    update_indexed_files(index_path, file_paths)
+    
+    return vector_db
+
+def main():
+    """Main function to run the indexing script."""
+    parser = argparse.ArgumentParser(description="Index new files in the knowledge base")
+    parser.add_argument("--knowledge", default=DEFAULT_KNOWLEDGE_DIR,
+                        help=f"Directory containing knowledge base documents (default: {DEFAULT_KNOWLEDGE_DIR})")
+    parser.add_argument("--index", default=DEFAULT_INDEX_NAME,
+                        help=f"Name of the vector index to update (default: {DEFAULT_INDEX_NAME})")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Force rebuild of the entire index instead of updating")
+    parser.add_argument("--tags", nargs='+', 
+                        help="Only include documents with these tags in the YAML front matter")
+    
+    args = parser.parse_args()
+    
+    start_time = time.time()
+    
+    try:
+        # Initialize embeddings
+        print("Initializing embeddings model...")
+        config = load_config()
+        embeddings = initialize_embeddings(config)
+        
+        # Create knowledge directory if it doesn't exist
+        Path(args.knowledge).mkdir(exist_ok=True)
+        
+        # If rebuild flag is set, rebuild the entire index
+        if args.rebuild:
+            print(f"Rebuilding the entire index: {args.index}")
+            
+            # Remove existing index if it exists
+            if os.path.exists(args.index):
+                import shutil
+                shutil.rmtree(args.index)
+                
+                # Also remove the metadata file
+                metadata_path = os.path.join(args.index, "indexed_files.txt")
+                if os.path.exists(metadata_path):
+                    os.remove(metadata_path)
+            
+            # Load all documents and recreate the index
+            documents = load_documents(args.knowledge, args.tags)
+            vector_db = create_or_load_index(documents, embeddings, args.index)
+            
+            # Update the list of indexed files
+            file_paths = [doc.metadata.get("source") for doc in documents]
+            update_indexed_files(args.index, file_paths)
+            
+            print(f"Successfully rebuilt index with {len(documents)} documents.")
+            
+        else:
+            # Check if index exists, create if not
+            if not os.path.exists(args.index):
+                print(f"Index {args.index} does not exist. Creating new index...")
+                documents = load_documents(args.knowledge, args.tags)
+                vector_db = create_or_load_index(documents, embeddings, args.index)
+                
+                # Update the list of indexed files
+                file_paths = [doc.metadata.get("source") for doc in documents]
+                update_indexed_files(args.index, file_paths)
+                
+                print(f"Successfully created new index with {len(documents)} documents.")
+            else:
+                # Load existing index
+                print(f"Loading existing index: {args.index}")
+                vector_db = FAISS.load_local(args.index, embeddings)
+                
+                # Find new files that need to be indexed
+                new_documents, new_file_paths = find_new_files(args.knowledge, args.index, args.tags)
+                
+                if new_documents:
+                    # Add new documents to the index
+                    vector_db = add_to_index(vector_db, new_documents, args.index, new_file_paths)
+                    print(f"Successfully added {len(new_documents)} new documents to the index.")
+                else:
+                    print("No new documents to add to the index.")
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+    
+    elapsed_time = time.time() - start_time
+    print(f"Indexing completed in {elapsed_time:.2f} seconds.")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+This script:
+
+1. Tracks which files have already been indexed in a metadata file (`indexed_files.txt`)
+2. Only processes new files that haven't been indexed yet
+3. Updates the existing vector index without rebuilding it from scratch
+4. Supports filtering by YAML front matter tags
+5. Includes a `--rebuild` option to force a complete rebuild if needed
+
+You can run it whenever you add new files to your knowledge base:
+
+```bash
+# Basic usage - will only index new files
+python index_knowledge.py
+
+# Specify custom knowledge directory and index name
+python index_knowledge.py --knowledge my_docs --index my_index
+
+# Only include files with specific tags
+python index_knowledge.py --tags midjourney images
+
+# Force a complete rebuild of the index
+python index_knowledge.py --rebuild
+```
+
+This approach is much faster than rebuilding the entire index each time, especially as your knowledge base grows larger.

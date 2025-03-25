@@ -238,7 +238,7 @@ def main():
         documents = load_documents(args.knowledge, args.tags)
         
         # Create or load vector index
-        vector_db = create_or_load_index(documents, embeddings, args.index, args.rebuild_index)
+        vector_db = create_or_load_index(documents, embeddings, args.index)
         
         # Load preprompt if file exists
         preprompt = load_preprompt(args.preprompt)

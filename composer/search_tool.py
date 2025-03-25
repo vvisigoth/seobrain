@@ -52,7 +52,11 @@ URL: {url}
 
 Context from search snippet: {snippet}
 
-Provide a concise summary of what you see in the screenshot. Focus on the main content, key information, and how it relates to the search query. Ignore ads, navigation elements, and other UI components unless they're relevant to understanding the content."""
+Provide your response in two parts:
+1. TEXT EXTRACTION: Extract the main textual content visible in the screenshot, preserving the structure as much as possible.
+2. SUMMARY: Provide a concise summary of what you see in the screenshot. Focus on the main content, key information, and how it relates to the search query. Ignore ads, navigation elements, and other UI components unless they're relevant to understanding the content.
+
+Use the headers "TEXT EXTRACTION:" and "SUMMARY:" to clearly separate these sections."""
 
 def prepare_summary_prompt(search_query, individual_summaries):
     """Prepare a prompt for the LLM to create a final summary of all results."""
@@ -135,7 +139,27 @@ def send_to_llm(prompt, image_path=None, server_url=SERVER_URL, provider="openai
     except requests.exceptions.RequestException as e:
         raise Exception(f"Connection error: {str(e)}")
 
-def save_results(query, search_results, screenshots, summaries, final_summary, output_dir):
+def extract_text_and_summary(analysis):
+    """Extract the text extraction and summary sections from the LLM analysis."""
+    text_extraction = ""
+    summary = ""
+    
+    # Split by headers
+    if "TEXT EXTRACTION:" in analysis and "SUMMARY:" in analysis:
+        parts = analysis.split("SUMMARY:")
+        text_part = parts[0]
+        summary = parts[1].strip()
+        
+        # Extract text content
+        if "TEXT EXTRACTION:" in text_part:
+            text_extraction = text_part.split("TEXT EXTRACTION:")[1].strip()
+    else:
+        # Fallback if the LLM didn't follow the format
+        summary = analysis
+    
+    return text_extraction, summary
+
+def save_results(query, search_results, screenshots, analyses, final_summary, output_dir):
     """Save search results, screenshots, and summaries to files."""
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -148,7 +172,24 @@ def save_results(query, search_results, screenshots, summaries, final_summary, o
     with open(search_results_file, "w") as f:
         json.dump(search_results, f, indent=2)
     
-    # Save individual summaries
+    # Save individual text extractions and summaries
+    extracted_texts = []
+    summaries = []
+    
+    for i, analysis in enumerate(analyses):
+        # Extract text and summary from the analysis
+        extracted_text, summary = extract_text_and_summary(analysis)
+        extracted_texts.append(extracted_text)
+        summaries.append(summary)
+        
+        # Save individual text extraction
+        text_file = os.path.join(output_dir, f"text_extraction_{timestamp}_{i+1}.txt")
+        with open(text_file, "w") as f:
+            f.write(f"Result {i+1}: {search_results[i]['title']}\n")
+            f.write(f"URL: {search_results[i]['link']}\n\n")
+            f.write(extracted_text)
+        
+    # Save all summaries in one file
     summaries_file = os.path.join(output_dir, f"summaries_{timestamp}.txt")
     with open(summaries_file, "w") as f:
         for i, summary in enumerate(summaries):
@@ -167,7 +208,8 @@ def save_results(query, search_results, screenshots, summaries, final_summary, o
         "search_results": search_results_file,
         "summaries": summaries_file,
         "final_summary": final_summary_file,
-        "screenshots": screenshots
+        "screenshots": screenshots,
+        "text_extractions": extracted_texts
     }
 
 def main():
@@ -209,6 +251,7 @@ def main():
                 screenshots.append(None)
         
         # Analyze screenshots with LLM
+        analyses = []
         summaries = []
         for i, (result, screenshot) in enumerate(zip(search_results, screenshots)):
             if screenshot:
@@ -220,16 +263,22 @@ def main():
                 )
                 
                 # Send to LLM
-                summary = send_to_llm(
+                analysis = send_to_llm(
                     prompt=prompt,
                     image_path=screenshot,
                     provider=args.provider,
                     model=args.model
                 )
                 
-                summaries.append(summary)
+                analyses.append(analysis)
+                
+                # Extract just the summary part for the final summary
+                _, summary = extract_text_and_summary(analysis)
+                summaries.append(summary if summary else analysis)
+                
                 print(f"Analysis complete for result {i+1}")
             else:
+                analyses.append("Screenshot capture failed for this result.")
                 summaries.append("Screenshot capture failed for this result.")
         
         # Create final summary
@@ -253,7 +302,7 @@ def main():
                 search_query,
                 search_results,
                 screenshots,
-                summaries,
+                analyses,
                 final_summary,
                 output_dir
             )

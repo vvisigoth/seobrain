@@ -1,0 +1,79 @@
+Here's the updated README.md section that includes the new RAG-related flags for `articlegenerator.py` and information about using `indexer.py`:
+
+```markdown
+## RAG (Retrieval-Augmented Generation) Features
+
+The SEO Content Generator now includes RAG capabilities, allowing it to search through a knowledge base of documents to enhance article quality with relevant research information.
+
+### Knowledge Base
+
+- Create a `knowledge_base` directory (or specify a custom location) to store your reference documents
+- Supports `.txt`, `.md`, `.html`, `.json`, and `.csv` files
+- For markdown files, you can use YAML front matter with tags for better organization
+
+### RAG-related Command Line Options
+
+- `--knowledge`: Directory containing knowledge base documents (default: `knowledge_base/`)
+- `--index`: Name of the vector index to create/use (default: `seo_index/`)
+- `--rebuild-index`: Force rebuild of the search index
+- `--results`: Number of research results to include per article (default: 3)
+- `--tags`: Only include documents with specific tags in the YAML front matter
+
+### Example YAML Front Matter
+
+For markdown files in your knowledge base, you can add tags using YAML front matter:
+
+```
+---
+tags:
+  - seo
+  - marketing
+  - analytics
+---
+
+Your document content here...
+```
+
+### Using the Indexer
+
+The `indexer.py` script monitors your knowledge base directory and automatically updates the search index when files are added or modified:
+
+```bash
+# Start watching the knowledge base directory
+python indexer.py
+
+# Watch a custom knowledge directory and index
+python indexer.py --knowledge my_docs --index my_index
+
+# Only index files with specific tags
+python indexer.py --tags seo marketing
+
+# Set a custom cooldown period (in seconds)
+python indexer.py --cooldown 10
+```
+
+### RAG Examples
+
+```bash
+# Generate articles using the knowledge base
+python articlegenerator.py keywords.txt --knowledge my_knowledge_base
+
+# Only use documents with specific tags
+python articlegenerator.py keywords.txt --tags seo marketing
+
+# Include more research results per article
+python articlegenerator.py keywords.txt --results 5
+
+# Force rebuild of the search index
+python articlegenerator.py keywords.txt --rebuild-index
+```
+
+The RAG system enhances article generation by incorporating relevant information from your knowledge base, making the content more authoritative and informative.
+```
+
+This section provides clear documentation on:
+1. The new RAG features and how they work
+2. All the new command-line options related to RAG
+3. How to use YAML front matter with tags
+4. How to use the indexer script to monitor the knowledge base
+5. Examples showing different ways to use the RAG functionality

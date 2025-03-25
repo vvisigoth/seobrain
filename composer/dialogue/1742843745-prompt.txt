@@ -1,1 +1,0 @@
-Write a lightweight indexing script that I can run whenever a new file is added to a directory.

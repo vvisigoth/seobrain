@@ -1,0 +1,1 @@
+Update README.md to include new flags for articlegenerator and the use of `indexer.py`

@@ -1,0 +1,39 @@
+I'll update the `crosslinker.py` script to make the links compatible with Obsidian. Obsidian uses the `[[filename]]` format for internal links rather than the standard Markdown format.
+
+Here's the modified part of the `update_content_with_links` method in the `Article` class:
+
+```python
+def update_content_with_links(self, links: List[Tuple[str, str]]) -> str:
+    """
+    Update the article content with crosslinks in Obsidian-compatible format
+    
+    Args:
+        links: List of tuples (target_filename, target_title)
+        
+    Returns:
+        Updated content with added links section
+    """
+    if not links:
+        return self.content
+    
+    # Prepare the related articles section with Obsidian-compatible links
+    related_section = "\n\n## Related Articles\n\n"
+    for target_filename, target_title in links:
+        # Convert to Obsidian format: [[filename]] or [[filename|display text]]
+        # Remove the .md extension for Obsidian links
+        filename_without_ext = os.path.splitext(target_filename)[0]
+        related_section += f"* [[{filename_without_ext}|{target_title}]]\n"
+    
+    # Check if there's already a "Related Articles" section
+    if "## Related Articles" in self.content:
+        # Replace existing section
+        pattern = r"## Related Articles\s*\n([\s\S]*?)(?=\n##|\Z)"
+        updated_content = re.sub(pattern, related_section, self.content)
+    else:
+        # Add new section at the end
+        updated_content = self.content + related_section
+    
+    return updated_content
+```
+
+This change will create links in Obsidian's preferred format: `[[filename|Display Text]]` instead of the standard Markdown format `[Display Text](./filename.md)`. The code also removes the `.md` extension from filenames since Obsidian doesn't require it for internal links.

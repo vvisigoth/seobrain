@@ -1,6 +1,8 @@
-# SEO Content Generator
+# SEO Brain
 
 A Python script that takes a text file where each line is an SEO keyword and generates optimized content for each keyword using AI.
+
+![KRANG](https://cdn11.bigcommerce.com/s-b70w3e4554/images/stencil/1280x1280/products/339/6692/911124_press20_copy__86116.1714570677.jpg)
 
 ## Features
 
@@ -9,10 +11,38 @@ A Python script that takes a text file where each line is an SEO keyword and gen
 - Creates a separate markdown file for each generated piece of content
 - Configurable AI model and provider
 
+## How It Works
+
+1. The script reads keywords from a text file (one per line)
+2. For each keyword, it generates:
+   - An SEO-optimized H1 title
+   - A meta description (150-160 characters)
+   - 5-7 H2 subheadings 
+   - 300-500 words of content
+   - A call-to-action
+3. The content is saved as a markdown file for each keyword in the output directory
+
+
+## Sample Input File
+
+Create a text file (e.g., `keywords.txt`) with keywords, one per line:
+
+```
+best yoga mats 2024
+how to make sourdough bread
+digital marketing for small businesses
+```
+
+## Output
+
+For each keyword, a markdown file will be generated in the output directory with SEO-optimized content.
+
 ## Requirements
 
 - Python 3.6+
 - `requests` library
+- Access to an AI backend (local Ollama instance or API keys for other providers)
+- The `composer.py` server must be running on the specified URL
 
 ## Installation
 
@@ -24,10 +54,23 @@ A Python script that takes a text file where each line is an SEO keyword and gen
 
 3. Create a `config.json` file in the same directory (optional - only needed if you want to use non-Ollama providers)
 
-## Usage
+## Basic Usage
 
 ```bash
 python seo_generator.py keywords.txt
+```
+
+### Basic Examples
+
+```bash
+# Basic usage
+python seo_generator.py my_keywords.txt
+
+# Use a specific model and provider
+python seo_generator.py my_keywords.txt -m gpt-4o -p openai
+
+# Save output to a custom directory
+python seo_generator.py my_keywords.txt -o custom_output/
 ```
 
 ### Command Line Options
@@ -89,19 +132,6 @@ python indexer.py --tags seo marketing
 python indexer.py --cooldown 10
 ```
 
-### Example
-
-```bash
-# Basic usage
-python seo_generator.py my_keywords.txt
-
-# Use a specific model and provider
-python seo_generator.py my_keywords.txt -m gpt-4o -p openai
-
-# Save output to a custom directory
-python seo_generator.py my_keywords.txt -o custom_output/
-```
-
 ### RAG Examples
 
 ```bash
@@ -120,37 +150,18 @@ python articlegenerator.py keywords.txt --rebuild-index
 
 The RAG system enhances article generation by incorporating relevant information from your knowledge base, making the content more authoritative and informative.
 
-
-## How It Works
-
-1. The script reads keywords from a text file (one per line)
-2. For each keyword, it generates:
-   - An SEO-optimized H1 title
-   - A meta description (150-160 characters)
-   - 5-7 H2 subheadings 
-   - 300-500 words of content
-   - A call-to-action
-3. The content is saved as a markdown file for each keyword in the output directory
-
-## Requirements
-
-- Python 3.6 or higher
-- Access to an AI backend (local Ollama instance or API keys for other providers)
-- The `composer.py` server must be running on the specified URL
-
-## Sample Input File
-
-Create a text file (e.g., `keywords.txt`) with keywords, one per line:
+## Advanced Usage
 
 ```
-best yoga mats 2024
-how to make sourdough bread
-digital marketing for small businesses
+# Generate a single article with specific title and keywords
+python articlegenerator.py --single --title "Best Yoga Mats for Beginners" --keywords "yoga mats" "beginners yoga" "best yoga equipment" 
+
+# Specify custom output directory and model
+python articlegenerator.py --single --title "Digital Marketing Strategies" --keywords "digital marketing" "SEO" "content strategy" -o custom_output/ -m gpt-4
+
+# Use RAG with specific knowledge base and tags
+python articlegenerator.py --single --title "Healthy Meal Prep Ideas" --keywords "meal prep" "healthy recipes" "nutrition" --knowledge nutrition_docs/ --tags recipes nutrition
 ```
-
-## Output
-
-For each keyword, a markdown file will be generated in the output directory with SEO-optimized content.
 
 ## Notes
 

@@ -1,0 +1,1 @@
+Let's add an option to article generator to create just ONE article, where the user supplies the title and the keywords.
